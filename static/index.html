@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>NBA 2K26 Tendency Generator</title>
+  <link rel="stylesheet" href="/static/style.css" />
+</head>
+<body>
+  <header>
+    <div class="header-inner">
+      <span class="logo-badge">2K26</span>
+      <h1>NBA 2K26 Tendency Generator</h1>
+    </div>
+  </header>
+
+  <main>
+    <!-- Search Section -->
+    <section class="card search-card">
+      <h2>Player Search</h2>
+      <div class="search-row">
+        <div class="autocomplete-wrapper">
+          <input id="searchInput" type="text" placeholder="Search player name…" autocomplete="off" />
+          <ul id="autocompleteList" class="autocomplete-dropdown hidden"></ul>
+        </div>
+        <button id="generateBtn" class="btn-primary" disabled>Generate</button>
+        <button id="refreshBtn" class="btn-secondary" title="Refresh player roster">↻ Roster</button>
+      </div>
+      <div id="selectedPlayer" class="selected-player hidden">
+        <span id="selectedName"></span>
+        <span id="selectedTeam" class="badge badge-team"></span>
+        <span id="selectedPos"  class="badge badge-pos"></span>
+      </div>
+    </section>
+
+    <!-- Loading -->
+    <div id="loadingOverlay" class="loading-overlay hidden">
+      <div class="spinner"></div>
+      <p id="loadingMsg">Generating tendencies…</p>
+    </div>
+
+    <!-- Results -->
+    <section id="resultsSection" class="card hidden">
+      <div class="results-header">
+        <div>
+          <h2 id="resultName"></h2>
+          <span id="resultTeam" class="badge badge-team"></span>
+          <span id="resultPos"  class="badge badge-pos"></span>
+        </div>
+        <div class="export-btns">
+          <button id="exportCsvBtn"   class="btn-secondary">⬇ CSV</button>
+          <button id="exportExcelBtn" class="btn-secondary">⬇ Excel</button>
+        </div>
+      </div>
+      <div id="tendencyTables"></div>
+    </section>
+
+    <!-- Bulk Mode -->
+    <section class="card bulk-card">
+      <h2>Bulk Generate</h2>
+      <div class="bulk-row">
+        <select id="teamSelect">
+          <option value="">— Select a team —</option>
+        </select>
+        <button id="bulkBtn" class="btn-primary">Generate Team</button>
+      </div>
+      <div id="bulkProgress" class="progress-wrapper hidden">
+        <div class="progress-bar-track">
+          <div id="progressBar" class="progress-bar-fill" style="width:0%"></div>
+        </div>
+        <span id="progressLabel">0 / 0</span>
+      </div>
+      <div id="bulkResults"></div>
+    </section>
+  </main>
+
+  <script src="/static/script.js"></script>
+</body>
+</html>

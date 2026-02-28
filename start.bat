@@ -1,0 +1,6 @@
+@echo off
+echo Installing dependencies...
+pip install -r requirements.txt
+echo Starting NBA 2K26 Tendency Generator...
+python app.py
+pause
