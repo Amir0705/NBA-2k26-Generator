@@ -244,6 +244,7 @@ def _fetch_pbp_moves(bbref_id, season_year="2024"):
                 return 0
 
             g = val("g") or 1
+            # "and1" is the BBRef stat name for and-1 plays, used here as a proxy for alley-oop finishes
             moves["alley_oop_finish"] = round(val("and1") / max(g, 1), 2)
             break
     except Exception:

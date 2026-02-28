@@ -400,7 +400,8 @@ def calculate_tendencies(player_data):
     T["Isolation vs Poor"]    = _round5(_clamp(iso_base, 5, 55))
 
     # 61. PLAY DISCIPLINE (75)
-    ast_to = ast / max(per_game.get("tov", ast * 0.3) if isinstance(per_game, dict) else ast * 0.3, 0.1)
+    tov = _safe(per_game.get("tov"), ast * 0.3) if isinstance(per_game, dict) else ast * 0.3
+    ast_to = ast / max(tov, 0.1)
     disc = _clamp(40 + ast_to * 5, 35, 70)
     T["Play Discipline"] = _round5(disc)
 

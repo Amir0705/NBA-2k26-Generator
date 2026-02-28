@@ -6,7 +6,11 @@ from flask import Flask, jsonify, request, send_file, send_from_directory
 
 app = Flask(__name__, static_folder="static")
 
-BULK_GENERATION_LIMIT = 30  # max players per bulk request to avoid timeout
+# Max players processed in a single bulk request.
+# Players beyond this limit are silently skipped; the caller receives only the
+# first BULK_GENERATION_LIMIT results.  Increase with caution — each player
+# requires several external API calls and can take several seconds.
+BULK_GENERATION_LIMIT = 30
 
 
 def _cors(response):

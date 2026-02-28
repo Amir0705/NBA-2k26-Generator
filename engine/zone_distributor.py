@@ -7,6 +7,11 @@ def _round5(v):
     return max(0, round(v / 5) * 5)
 
 
+def _zone_cap(parent_value):
+    """Compute the dynamic cap for a directional zone: max(parent - 10, 15), rounded to 5."""
+    return max((parent_value - 10) // 5 * 5, 15)
+
+
 def _zone_stats(shot_zones, basic_filter, area_filter=None):
     """Sum fga/fgm for zones matching the given filters."""
     fga = fgm = 0
@@ -31,9 +36,9 @@ def compute_zone_tendencies(shot_zones, parent_shot=None, parent_mid=None, paren
     parent_mid   = parent_mid   or 30
     parent_three = parent_three or 40
 
-    cap_close = max(parent_shot - 10, 15)
-    cap_mid   = max(parent_mid  - 10, 15)
-    cap_three = max(parent_three - 10, 15)
+    cap_close = _zone_cap(parent_shot)
+    cap_mid   = _zone_cap(parent_mid)
+    cap_three = _zone_cap(parent_three)
 
     # ── Close zones ────────────────────────────────────────────────
     close_groups = {
@@ -92,9 +97,9 @@ def _equal_defaults(parent_shot, parent_mid, parent_three):
     parent_mid   = parent_mid   or 30
     parent_three = parent_three or 40
 
-    cap_close = max((parent_shot - 10) // 5 * 5, 15)
-    cap_mid   = max((parent_mid  - 10) // 5 * 5, 15)
-    cap_three = max((parent_three - 10) // 5 * 5, 15)
+    cap_close = _zone_cap(parent_shot)
+    cap_mid   = _zone_cap(parent_mid)
+    cap_three = _zone_cap(parent_three)
 
     return {
         "shot_close_left":         cap_close,

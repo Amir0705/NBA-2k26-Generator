@@ -259,7 +259,6 @@ table.tend-table tr:last-child td { border-bottom: none; }
 .tend-override.invalid { border-color: var(--red); }
 
 /* ── Bulk section ────────────────────────────────────────────────────── */
-.bulk-card { }
 .bulk-row  { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
 #teamSelect {
   background: var(--card2);

@@ -88,10 +88,9 @@ def get_tracking_stats(player_id, season=SEASON):
         _sleep()
         dfs = pass_data.get_data_frames()
         if len(dfs) > 1 and not dfs[1].empty:
-            # pass received df
-            pass
+            pass  # pass-received DataFrame not used currently; reserved for future expansion
     except Exception:
-        pass
+        pass  # silently skip — optional supplemental data
 
     try:
         from nba_api.stats.endpoints import playerdashptreb
