@@ -14,6 +14,11 @@ from urllib.request import urlopen, Request
 
 DATA_DIR = os.path.join(os.path.dirname(__file__), "..", "data")
 
+# Rough average FGA per game for a starter; used to estimate games_played when GAME_ID is missing
+_ESTIMATED_FGA_PER_GAME = 16
+# Floor for estimated games_played to avoid extreme per-game rates for low-game samples
+_MIN_ESTIMATED_GAMES = 40
+
 
 def _get_shotdetail_path(season_year=2024):
     """Return path to cached shotdetail CSV."""
@@ -129,6 +134,12 @@ def load_player_shotdetail(player_id, season_year=2024):
         "zone_area_close": {},
     }
 
+    # Count unique games — GAME_ID column tells us exactly how many games the player played
+    if "GAME_ID" in df.columns:
+        result["games_played"] = int(df["GAME_ID"].nunique())
+    else:
+        result["games_played"] = max(int(total_shots / _ESTIMATED_FGA_PER_GAME), _MIN_ESTIMATED_GAMES)
+
     # --- Shooting splits by distance zone ---
     range_counts = df["SHOT_ZONE_RANGE"].value_counts()
     less8  = int(range_counts.get("Less Than 8 ft.", 0))
@@ -200,17 +211,30 @@ def load_player_shotdetail(player_id, season_year=2024):
                 close_area.get(area_name, 0) / close_total if close_total > 0 else 0
             )
 
+    # --- Step-back 2pt/3pt split using SHOT_TYPE column ---
+    stepback_df = df[df["ACTION_TYPE"].str.contains("Step Back", case=False, na=False)]
+    if not stepback_df.empty:
+        result["stepback_2pt_count"] = int(
+            len(stepback_df[stepback_df["SHOT_TYPE"] == "2PT Field Goal"])
+        )
+        result["stepback_3pt_count"] = int(
+            len(stepback_df[stepback_df["SHOT_TYPE"] == "3PT Field Goal"])
+        )
+    else:
+        result["stepback_2pt_count"] = 0
+        result["stepback_3pt_count"] = 0
+
     return result
 
 
-def extract_move_frequencies(action_counts, total_fga):
+def extract_move_frequencies(action_counts, total_fga, games_played=None):
     """
     Convert ACTION_TYPE counts to per-game move frequency estimates.
     Maps NBA action types to 2K tendency move names.
 
-    Assumes ~82 games in a season; adjusts to per-game rate.
+    Uses games_played if provided; otherwise estimates from total_fga.
     """
-    games = 82  # approximate regular season
+    games = games_played if games_played and games_played > 0 else max(total_fga / _ESTIMATED_FGA_PER_GAME, _MIN_ESTIMATED_GAMES)
 
     def freq(keywords):
         """Sum counts for action types containing any keyword."""
@@ -221,21 +245,32 @@ def extract_move_frequencies(action_counts, total_fga):
                 total += count
         return round(total / games, 3)
 
-    # Step-back: "step back" matches all step-back actions including "step back jump shot".
-    # Subtracting the jump-shot subset gives non-jump-shot step-backs (e.g. step-back layups)
-    # as a rough proxy for mid-range step-backs. Both values are approximations since
-    # SHOT_TYPE filtering is not available at the action-count level.
-    stepback_all = freq(["step back"])
-    stepback_3   = freq(["step back jump shot"])  # most step-back 3s are labeled this way
+    # Step-back: use pre-computed 2pt/3pt counts when available (keyed with underscore prefix),
+    # otherwise fall back to keyword-based approximation.
+    sb_2pt_count = action_counts.get("_stepback_2pt", None)
+    sb_3pt_count = action_counts.get("_stepback_3pt", None)
+    if sb_2pt_count is not None and sb_3pt_count is not None:
+        stepback_mid = round(sb_2pt_count / games, 3)
+        stepback_3   = round(sb_3pt_count / games, 3)
+    else:
+        stepback_all = freq(["step back"])
+        # "step back jump shot" matches ALL step-back jump shots (both 2pt and 3pt),
+        # so without SHOT_TYPE we cannot reliably split; keep legacy approximation.
+        stepback_jump = freq(["step back jump shot"])
+        stepback_mid  = max(round(stepback_all - stepback_jump, 3), 0)
+        stepback_3    = stepback_jump
 
     return {
-        "stepback_mid":      max(round(stepback_all - stepback_3, 3), 0),
+        "stepback_mid":      stepback_mid,
         "stepback_3":        stepback_3,
-        "spin_jumper":       freq(["turnaround"]),
+        # "turnaround" covers turnaround fadeaways which are post moves, not 2K spin jumpers.
+        # There is no reliable NBA action type that maps to 2K's spin jumper concept.
+        "spin_jumper":       0,
         "spin_layup":        freq(["reverse layup", "reverse dunk"]),
         "euro_step":         freq(["euro"]),
         "hop_step":          freq(["hop"]),
-        "floater":           freq(["floating", "floater"]),
+        # "Floating Jump Shot" is too broad — only count true floaters (keyword "floater").
+        "floater":           freq(["floater"]),
         "step_through":      freq(["step through"]),
         "alley_oop_finish":  freq(["alley oop"]),
         "driving_layup":     freq(["driving layup", "driving finger roll"]),

@@ -279,9 +279,9 @@ def calculate_tendencies(player_data):
     # 26. HOP STEP LAYUP (55)
     T["Hop Step Layup"] = _round5(_clamp(hop_step * 40, 5, 55))
 
-    # 27. FLOATER (55)
-    floater_v = floater_pbp if floater_pbp > 0 else (0.5 if _is_guard(pos) else 0.2)
-    T["Floater"] = _round5(_clamp(floater_v * 50, 5, 55))
+    # 27. FLOATER (55) — scale: 0.5/game = 10, 1.0/game = 20, 2.0/game = 40 (was * 50, too high)
+    floater_v = floater_pbp if floater_pbp > 0 else (0.3 if _is_guard(pos) else 0.1)
+    T["Floater"] = _round5(_clamp(floater_v * 20, 5, 55))
 
     # 28. STAND & DUNK (60)
     base_stand_dunk = {"C": 40, "PF": 35, "SF": 20, "SG": 15, "PG": 10}.get(pos, 15)
@@ -557,8 +557,17 @@ def generate_tendencies_for_player(player_id, player_name, season="2024-25"):
         # Build pbp_moves from action_counts using extract_move_frequencies
         action_counts = shotdetail_data.get("action_counts", {})
         if action_counts:
+            # Inject pre-computed step-back split counts so extract_move_frequencies
+            # can use exact 2pt/3pt counts instead of keyword approximation.
+            merged_counts = dict(action_counts)
+            merged_counts["_stepback_2pt"] = shotdetail_data.get("stepback_2pt_count", 0)
+            merged_counts["_stepback_3pt"] = shotdetail_data.get("stepback_3pt_count", 0)
+
             total_fga = shotdetail_data.get("total_fga", 1)
-            move_freqs = shotdetail_loader.extract_move_frequencies(action_counts, total_fga)
+            move_freqs = shotdetail_loader.extract_move_frequencies(
+                merged_counts, total_fga,
+                games_played=shotdetail_data.get("games_played"),
+            )
             # Override pbp_moves with computed frequencies (only if non-zero)
             merged_pbp = dict(pbp_moves)
             for key, val in move_freqs.items():
@@ -567,13 +576,52 @@ def generate_tendencies_for_player(player_id, player_name, season="2024-25"):
             pbp_moves = merged_pbp
 
     # Build player_data dict
+    per_game_data = bbref_data.get("per_game", {})
+    advanced_data = bbref_data.get("advanced", {})
+
+    # If BBRef per_game is empty but shotdetail has data, estimate from shotdetail.
+    # This handles the common case where BBRef scraping fails due to rate-limiting.
+    if shotdetail_data and not per_game_data:
+        total_fga = shotdetail_data.get("total_fga", 0)
+        total_fgm = shotdetail_data.get("total_fgm", 0)
+        games_played = shotdetail_data.get("games_played", 0)
+        # Use actual games from GAME_ID; fall back to FGA-based estimate with a floor of 40 games
+        estimated_games = games_played if games_played > 0 else max(total_fga / shotdetail_loader._ESTIMATED_FGA_PER_GAME, shotdetail_loader._MIN_ESTIMATED_GAMES)
+
+        if estimated_games > 0:
+            fga_per_game = total_fga / estimated_games
+            fgm_per_game = total_fgm / estimated_games
+            splits = shotdetail_data.get("shooting_splits", {})
+            pct_3pt = splits.get("pct_fga_3pt", 0.25)
+            fg3a_per_game = fga_per_game * pct_3pt
+
+            per_game_data = {
+                "fga": round(fga_per_game, 1),
+                "fg3a": round(fg3a_per_game, 1),
+                # pts ≈ 2pt FGM * ~2.1 (accounts for avg points per 2pt attempt inc. FTs)
+                #       + 3pt FGA * 0.3 (bonus points from made 3s vs expected 2s)
+                "pts": round(fgm_per_game * 2.1 + fg3a_per_game * 0.3, 1),
+                "g": round(estimated_games),
+            }
+
+            # Rough USG% estimate without possession data:
+            #   USG ≈ FGA/game * 1.4 + 5  (empirically fits starters; 1.4 scales for FTA/TOV)
+            #   Clamped to [15, 35] — below-15 is bench player, above-35 is unrealistic from FGA alone
+            estimated_usg = min(max(fga_per_game * 1.4 + 5, 15), 35)
+            advanced_data = {"usg_pct": round(estimated_usg, 1)}
+
+            print(
+                f"[shotdetail] Estimated per_game from shotdetail: "
+                f"fga={fga_per_game:.1f}, usg={estimated_usg:.1f}, games={estimated_games:.0f}"
+            )
+
     player_data = {
         "player_id": player_id,
         "name":      player_info.get("name", player_name),
         "position":  position,
         "team":      player_info.get("team", ""),
-        "per_game":  bbref_data.get("per_game",        {}),
-        "advanced":  bbref_data.get("advanced",        {}),
+        "per_game":  per_game_data,
+        "advanced":  advanced_data,
         "shooting_splits": shooting_splits,
         "tracking":  tracking,
         "shot_zones": shot_zones,
