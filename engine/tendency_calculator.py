@@ -258,10 +258,19 @@ def calculate_tendencies(player_data):
     elif pos == "SF":  T["Use Glass"] = 20
     else:              T["Use Glass"] = 15
 
-    # 23. STEP THROUGH SHOT (45)
+    # 23. DRIVING LAYUP (60) – based on drives and close-range shooting
+    if _is_guard(pos):
+        driving_layup = _round5(_clamp(drives * 4 + p0_3 * 40, 15, 60))
+    elif _is_wing(pos):
+        driving_layup = _round5(_clamp(drives * 3.5 + p0_3 * 35, 10, 60))
+    else:
+        driving_layup = _round5(_clamp(drives * 2 + p0_3 * 50, 15, 60))
+    T["Driving Layup"] = driving_layup
+
+    # 24. STEP THROUGH SHOT (45)
     T["Step Through Shot"] = _round5(_clamp(step_through * 40, 5, 45))
 
-    # 24. SPIN LAYUP (55)
+    # 25. SPIN LAYUP (55)
     T["Spin Layup"] = _round5(_clamp(spin_layup * 40, 5, 55))
 
     # 25. EUROSTEP LAYUP (55)
@@ -537,6 +546,38 @@ def generate_tendencies_for_player(player_id, player_name, season="2024-25"):
     }
 
     tendencies = calculate_tendencies(player_data)
+
+    # Compute zone tendencies from shot chart data
+    zone_tends = zone_distributor.compute_zone_tendencies(
+        shot_zones,
+        parent_shot=tendencies.get("Shot Close") if tendencies.get("Shot Close") is not None else tendencies.get("Shot Under"),
+        parent_mid=tendencies.get("Shot Mid"),
+        parent_three=tendencies.get("Shot Three"),
+    )
+    name_map = {
+        "shot_close_left":         "Shot Close Left",
+        "shot_close_middle":       "Shot Close Middle",
+        "shot_close_right":        "Shot Close Right",
+        "shot_mid_left":           "Shot Mid Left",
+        "shot_mid_left_center":    "Shot Mid Left-Center",
+        "shot_mid_center":         "Shot Mid Center",
+        "shot_mid_right_center":   "Shot Mid Right-Center",
+        "shot_mid_right":          "Shot Mid Right",
+        "shot_three_left":         "Shot Three Left",
+        "shot_three_left_center":  "Shot Three Left-Center",
+        "shot_three_center":       "Shot Three Center",
+        "shot_three_right_center": "Shot Three Right-Center",
+        "shot_three_right":        "Shot Three Right",
+    }
+    for key, name in name_map.items():
+        tendencies[name] = zone_tends.get(key, 0)
+
+    print(
+        f"[DEBUG] {player_name}: "
+        f"bbref={'OK' if bbref_data.get('per_game') else 'FAILED'}, "
+        f"tracking={'OK' if any(v is not None for v in tracking.values()) else 'FAILED'}, "
+        f"zones={'OK' if shot_zones else 'FAILED'}"
+    )
 
     return {
         "player_id": player_id,

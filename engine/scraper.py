@@ -168,7 +168,8 @@ def _fetch_shooting_splits(bbref_id, season_year="2024"):
     }
     try:
         letter = bbref_id[0]
-        url = f"https://www.basketball-reference.com/players/{letter}/{bbref_id}/shooting/{season_year}"
+        season_end = str(int(season_year) + 1)
+        url = f"https://www.basketball-reference.com/players/{letter}/{bbref_id}/shooting/{season_end}"
         _bbref_sleep()
         resp = requests.get(url, headers=HEADERS, timeout=15)
         soup = BeautifulSoup(resp.text, "lxml")
@@ -200,8 +201,8 @@ def _fetch_shooting_splits(bbref_id, season_year="2024"):
             splits["pct_fga_16_3pt"] = get_col("%FGA\xa016-3P")  or get_col("16-3P")
             splits["pct_fga_3pt"]    = get_col("%FGA\xa03P")     or get_col("3P")
             break
-    except Exception:
-        pass
+    except Exception as e:
+        print(f"[DEBUG] BBRef shooting splits fetch failed for {bbref_id}: {e}")
     return splits
 
 
@@ -280,8 +281,12 @@ def get_player_stats(player_name, player_id=None, season="2024-25"):
 
         result["per_game"] = _fetch_per_game(soup, season_label=season)
         result["advanced"] = _fetch_advanced(soup, season_label=season)
-    except Exception:
-        pass
+        if not result["per_game"]:
+            print(f"[DEBUG] BBRef per_game fetch returned empty for {player_name} ({bbref_id})")
+        if not result["advanced"]:
+            print(f"[DEBUG] BBRef advanced fetch returned empty for {player_name} ({bbref_id})")
+    except Exception as e:
+        print(f"[DEBUG] BBRef player page fetch failed for {player_name} ({bbref_id}): {e}")
 
     result["shooting_splits"] = _fetch_shooting_splits(bbref_id, season_year)
     result["pbp_moves"] = _fetch_pbp_moves(bbref_id, season_year)
