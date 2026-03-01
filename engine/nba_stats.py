@@ -4,7 +4,7 @@ from engine.constants import SEASON
 
 
 def _sleep():
-    time.sleep(0.6)
+    time.sleep(1.0)
 
 
 def get_tracking_stats(player_id, season=SEASON):
@@ -35,27 +35,10 @@ def get_tracking_stats(player_id, season=SEASON):
     }
 
     try:
-        from nba_api.stats.endpoints import playerdashptstats
-        _sleep()
-        touch_data = playerdashptstats.PlayerDashPtStats(
-            player_id=player_id,
-            season=season,
-            per_mode_simple="PerGame",
-        )
-        _sleep()
-        dfs = touch_data.get_data_frames()
-        if dfs:
-            df = dfs[0]
-            if not df.empty:
-                row = df.iloc[0]
-                result["touches_per_game"] = _safe_float(row, "TOUCHES")
-    except Exception as e:
-        print(f"[nba_stats] PlayerDashPtStats (touches) failed: {e}")
-
-    try:
         from nba_api.stats.endpoints import playerdashptshots
         _sleep()
         shot_data = playerdashptshots.PlayerDashPtShots(
+            team_id=0,
             player_id=player_id,
             season=season,
             per_mode_simple="PerGame",
@@ -83,6 +66,7 @@ def get_tracking_stats(player_id, season=SEASON):
         from nba_api.stats.endpoints import playerdashptpass
         _sleep()
         pass_data = playerdashptpass.PlayerDashPtPass(
+            team_id=0,
             player_id=player_id,
             season=season,
             per_mode_simple="PerGame",
@@ -118,16 +102,21 @@ def get_tracking_stats(player_id, season=SEASON):
         from nba_api.stats.endpoints import synergyplaytypes
         _sleep()
         syn = synergyplaytypes.SynergyPlayTypes(
-            player_id=player_id,
             season=season,
-            per_mode_simple="PerGame",
             play_type_nullable="Isolation",
+            per_mode_simple="PerGame",
+            player_or_team_abbreviation="P",
+            season_type_all_star="Regular Season",
+            type_grouping_nullable="offensive",
         )
         _sleep()
         dfs = syn.get_data_frames()
         if dfs and not dfs[0].empty:
-            row = dfs[0].iloc[0]
-            result["iso_freq"] = _safe_float(row, "POSS_PCT")
+            df = dfs[0]
+            rows = df[df["PLAYER_ID"] == int(player_id)]
+            if not rows.empty:
+                row = rows.iloc[0]
+                result["iso_freq"] = _safe_float(row, "POSS_PCT")
     except Exception as e:
         print(f"[nba_stats] Isolation synergy failed: {e}")
 
@@ -135,16 +124,21 @@ def get_tracking_stats(player_id, season=SEASON):
         from nba_api.stats.endpoints import synergyplaytypes
         _sleep()
         syn = synergyplaytypes.SynergyPlayTypes(
-            player_id=player_id,
             season=season,
-            per_mode_simple="PerGame",
             play_type_nullable="Postup",
+            per_mode_simple="PerGame",
+            player_or_team_abbreviation="P",
+            season_type_all_star="Regular Season",
+            type_grouping_nullable="offensive",
         )
         _sleep()
         dfs = syn.get_data_frames()
         if dfs and not dfs[0].empty:
-            row = dfs[0].iloc[0]
-            result["post_up_freq"] = _safe_float(row, "POSS_PCT")
+            df = dfs[0]
+            rows = df[df["PLAYER_ID"] == int(player_id)]
+            if not rows.empty:
+                row = rows.iloc[0]
+                result["post_up_freq"] = _safe_float(row, "POSS_PCT")
     except Exception as e:
         print(f"[nba_stats] Postup synergy failed: {e}")
 
@@ -152,16 +146,21 @@ def get_tracking_stats(player_id, season=SEASON):
         from nba_api.stats.endpoints import synergyplaytypes
         _sleep()
         syn = synergyplaytypes.SynergyPlayTypes(
-            player_id=player_id,
             season=season,
-            per_mode_simple="PerGame",
             play_type_nullable="PRRollMan",
+            per_mode_simple="PerGame",
+            player_or_team_abbreviation="P",
+            season_type_all_star="Regular Season",
+            type_grouping_nullable="offensive",
         )
         _sleep()
         dfs = syn.get_data_frames()
         if dfs and not dfs[0].empty:
-            row = dfs[0].iloc[0]
-            result["pnr_roll_pct"] = _safe_float(row, "POSS_PCT")
+            df = dfs[0]
+            rows = df[df["PLAYER_ID"] == int(player_id)]
+            if not rows.empty:
+                row = rows.iloc[0]
+                result["pnr_roll_pct"] = _safe_float(row, "POSS_PCT")
     except Exception as e:
         print(f"[nba_stats] PRRollMan synergy failed: {e}")
 
@@ -173,6 +172,7 @@ def get_tracking_stats(player_id, season=SEASON):
             season=season,
             pt_measure_type="Drives",
             per_mode_simple="PerGame",
+            player_or_team="Player",
         )
         _sleep()
         dfs = drv.get_data_frames()
@@ -193,6 +193,7 @@ def get_tracking_stats(player_id, season=SEASON):
             season=season,
             pt_measure_type="Touches",
             per_mode_simple="PerGame",
+            player_or_team="Player",
         )
         _sleep()
         dfs = touches.get_data_frames()
@@ -214,6 +215,7 @@ def get_tracking_stats(player_id, season=SEASON):
             season=season,
             pt_measure_type="PullUpShot",
             per_mode_simple="PerGame",
+            player_or_team="Player",
         )
         _sleep()
         dfs = pullups.get_data_frames()
@@ -236,6 +238,7 @@ def get_tracking_stats(player_id, season=SEASON):
             season=season,
             pt_measure_type="CatchShoot",
             per_mode_simple="PerGame",
+            player_or_team="Player",
         )
         _sleep()
         dfs = catchshoot.get_data_frames()
@@ -257,6 +260,7 @@ def get_tracking_stats(player_id, season=SEASON):
             season=season,
             pt_measure_type="Defense",
             per_mode_simple="PerGame",
+            player_or_team="Player",
         )
         _sleep()
         dfs = defended.get_data_frames()
@@ -284,6 +288,7 @@ def get_tracking_stats(player_id, season=SEASON):
             season=season,
             pt_measure_type="SpeedDistance",
             per_mode_simple="PerGame",
+            player_or_team="Player",
         )
         _sleep()
         dfs = speed.get_data_frames()
@@ -301,19 +306,24 @@ def get_tracking_stats(player_id, season=SEASON):
         from nba_api.stats.endpoints import synergyplaytypes
         _sleep()
         syn = synergyplaytypes.SynergyPlayTypes(
-            player_id=player_id,
             season=season,
-            per_mode_simple="PerGame",
             play_type_nullable="Transition",
+            per_mode_simple="PerGame",
+            player_or_team_abbreviation="P",
+            season_type_all_star="Regular Season",
+            type_grouping_nullable="offensive",
         )
         _sleep()
         dfs = syn.get_data_frames()
         if dfs and not dfs[0].empty:
-            row = dfs[0].iloc[0]
-            trans_freq = _safe_float(row, "POSS_PCT") or 0
-            result["transition_freq"] = trans_freq
-            # Rough per-game estimate: transition POSS_PCT (0-1) * ~10 possessions scale
-            result["transition_3_fga"] = trans_freq * 10
+            df = dfs[0]
+            rows = df[df["PLAYER_ID"] == int(player_id)]
+            if not rows.empty:
+                row = rows.iloc[0]
+                trans_freq = _safe_float(row, "POSS_PCT") or 0
+                result["transition_freq"] = trans_freq
+                # Rough per-game estimate: transition POSS_PCT (0-1) * ~10 possessions scale
+                result["transition_3_fga"] = trans_freq * 10
     except Exception as e:
         print(f"[nba_stats] Transition synergy failed: {e}")
 
@@ -322,16 +332,21 @@ def get_tracking_stats(player_id, season=SEASON):
         from nba_api.stats.endpoints import synergyplaytypes
         _sleep()
         syn = synergyplaytypes.SynergyPlayTypes(
-            player_id=player_id,
             season=season,
-            per_mode_simple="PerGame",
             play_type_nullable="Spotup",
+            per_mode_simple="PerGame",
+            player_or_team_abbreviation="P",
+            season_type_all_star="Regular Season",
+            type_grouping_nullable="offensive",
         )
         _sleep()
         dfs = syn.get_data_frames()
         if dfs and not dfs[0].empty:
-            row = dfs[0].iloc[0]
-            result["spot_up_drive_freq"] = _safe_float(row, "POSS_PCT")
+            df = dfs[0]
+            rows = df[df["PLAYER_ID"] == int(player_id)]
+            if not rows.empty:
+                row = rows.iloc[0]
+                result["spot_up_drive_freq"] = _safe_float(row, "POSS_PCT")
     except Exception as e:
         print(f"[nba_stats] SpotUp synergy failed: {e}")
 
@@ -340,24 +355,29 @@ def get_tracking_stats(player_id, season=SEASON):
         from nba_api.stats.endpoints import synergyplaytypes
         _sleep()
         syn = synergyplaytypes.SynergyPlayTypes(
-            player_id=player_id,
             season=season,
-            per_mode_simple="PerGame",
             play_type_nullable="OffScreen",
+            per_mode_simple="PerGame",
+            player_or_team_abbreviation="P",
+            season_type_all_star="Regular Season",
+            type_grouping_nullable="offensive",
         )
         _sleep()
         dfs = syn.get_data_frames()
         if dfs and not dfs[0].empty:
-            row = dfs[0].iloc[0]
-            off_screen_freq = _safe_float(row, "POSS_PCT") or 0
-            # ~30% of off-screen plays result in drives
-            result["off_screen_drive_freq"] = off_screen_freq * 0.3
-            if result["off_screen_fga"] is None:
-                # Fallback: estimate ~5 FGA per unit of off-screen frequency
-                result["off_screen_fga"] = _safe_float(row, "FGA") or off_screen_freq * 5
-            if result["off_screen_3_fga"] is None:
-                # ~60% of off-screen FGA are three-pointers
-                result["off_screen_3_fga"] = (result["off_screen_fga"] or 0) * 0.6
+            df = dfs[0]
+            rows = df[df["PLAYER_ID"] == int(player_id)]
+            if not rows.empty:
+                row = rows.iloc[0]
+                off_screen_freq = _safe_float(row, "POSS_PCT") or 0
+                # ~30% of off-screen plays result in drives
+                result["off_screen_drive_freq"] = off_screen_freq * 0.3
+                if result["off_screen_fga"] is None:
+                    # Fallback: estimate ~5 FGA per unit of off-screen frequency
+                    result["off_screen_fga"] = _safe_float(row, "FGA") or off_screen_freq * 5
+                if result["off_screen_3_fga"] is None:
+                    # ~60% of off-screen FGA are three-pointers
+                    result["off_screen_3_fga"] = (result["off_screen_fga"] or 0) * 0.6
     except Exception as e:
         print(f"[nba_stats] OffScreen synergy failed: {e}")
 
@@ -406,7 +426,7 @@ def get_player_info(player_id):
     try:
         from nba_api.stats.endpoints import playerprofilev2
         _sleep()
-        profile = playerprofilev2.PlayerProfileV2(player_id=player_id)
+        profile = playerprofilev2.PlayerProfileV2(player_id=player_id, timeout=60)
         _sleep()
         dfs = profile.get_data_frames()
         if dfs and not dfs[0].empty:
@@ -427,7 +447,7 @@ def get_player_info(player_id):
     try:
         from nba_api.stats.endpoints import commonplayerinfo
         _sleep()
-        cpi = commonplayerinfo.CommonPlayerInfo(player_id=player_id)
+        cpi = commonplayerinfo.CommonPlayerInfo(player_id=player_id, timeout=60)
         _sleep()
         dfs = cpi.get_data_frames()
         if dfs and not dfs[0].empty:
@@ -500,7 +520,7 @@ def get_player_per_game_stats(player_id, season=SEASON):
             _sleep()
             dash = leaguedashplayerstats.LeagueDashPlayerStats(
                 season=season,
-                per_mode_simple="PerGame",
+                per_mode_detailed="PerGame",
             )
             _sleep()
             dfs = dash.get_data_frames()
@@ -535,8 +555,8 @@ def get_player_per_game_stats(player_id, season=SEASON):
         _sleep()
         adv_dash = leaguedashplayerstats.LeagueDashPlayerStats(
             season=season,
-            per_mode_simple="PerGame",
-            measure_type_simple="Advanced",
+            per_mode_detailed="PerGame",
+            measure_type_detailed_defense="Advanced",
         )
         _sleep()
         dfs = adv_dash.get_data_frames()
