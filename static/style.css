@@ -304,3 +304,66 @@ table.tend-table tr:last-child td { border-bottom: none; }
 .bulk-player-card:hover { border-color: var(--primary); }
 .bulk-player-name { font-weight: 600; font-size: 14px; }
 .bulk-player-meta { font-size: 12px; color: var(--text-dim); margin-top: 2px; }
+
+/* ── Debug Panel ─────────────────────────────────────────────────────── */
+.debug-header { margin-bottom: 1rem; font-size: 1.1rem; }
+
+.debug-source {
+  margin-bottom: 0.5rem;
+  border: 1px solid #333;
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.debug-source summary {
+  padding: 0.75rem 1rem;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  font-size: 0.95rem;
+}
+
+.debug-source summary:hover { background: rgba(255,255,255,0.05); }
+
+.debug-ok   { border-color: #2ea043; }
+.debug-ok summary   { background: rgba(46, 160, 67, 0.1); }
+.debug-fail { border-color: #f85149; }
+.debug-fail summary { background: rgba(248, 81, 73, 0.1); }
+.debug-warn { border-color: #d29922; }
+.debug-warn summary { background: rgba(210, 153, 34, 0.1); }
+
+.debug-status { font-size: 0.85rem; min-width: 70px; }
+.debug-error  { color: #f85149; font-size: 0.85rem; }
+
+.debug-data { padding: 1rem; }
+
+.debug-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.9rem;
+}
+
+.debug-table td {
+  padding: 0.4rem 0.75rem;
+  border-bottom: 1px solid rgba(255,255,255,0.1);
+  vertical-align: top;
+}
+
+.debug-key {
+  font-weight: 600;
+  color: #79c0ff;
+  white-space: nowrap;
+  width: 200px;
+}
+
+.debug-num { font-family: monospace; text-align: right; }
+
+.debug-null  { color: #f85149; font-style: italic; }
+.debug-empty { color: #8b949e; font-style: italic; }
+
+.debug-subtable { width: 100%; font-size: 0.85rem; }
+.debug-subtable td {
+  padding: 0.2rem 0.5rem;
+  border-bottom: 1px solid rgba(255,255,255,0.05);
+}

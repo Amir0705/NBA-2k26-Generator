@@ -24,6 +24,7 @@
           <ul id="autocompleteList" class="autocomplete-dropdown hidden"></ul>
         </div>
         <button id="generateBtn" class="btn-primary" disabled>Generate</button>
+        <button id="debugBtn" class="btn-secondary" disabled title="Show raw data from all sources">🔍 Raw Data</button>
         <button id="refreshBtn" class="btn-secondary" title="Refresh player roster">↻ Roster</button>
       </div>
       <div id="selectedPlayer" class="selected-player hidden">
@@ -53,6 +54,15 @@
         </div>
       </div>
       <div id="tendencyTables"></div>
+    </section>
+
+    <!-- Debug Raw Data Panel -->
+    <section id="debugSection" class="card hidden">
+      <div class="results-header">
+        <h2>🔍 Raw Data Debug</h2>
+        <button id="debugCloseBtn" class="btn-secondary">✕ Close</button>
+      </div>
+      <div id="debugContent"></div>
     </section>
 
     <!-- Bulk Mode -->
