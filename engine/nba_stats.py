@@ -355,6 +355,154 @@ def get_player_info(player_id):
     return info
 
 
+def get_player_per_game_stats(player_id, season=SEASON):
+    """
+    Fetch per-game and advanced stats using nba_api.
+    Returns (per_game_dict, advanced_dict) matching the format
+    expected by tendency_calculator.calculate_tendencies().
+
+    per_game keys: pts, reb, ast, stl, blk, pf, tov, fga, fg3a, fta,
+                   ft_pct (decimal 0-1), mp, g
+    advanced keys: usg_pct, ast_pct, orb_pct (all as percentages, e.g. 30.0 for 30%),
+                   ts_pct (decimal 0-1), per
+    """
+    per_game = {}
+    advanced = {}
+
+    # Try PlayerCareerStats for per-game stats (reliable, player-scoped)
+    try:
+        from nba_api.stats.endpoints import playercareerstats
+        _sleep()
+        career = playercareerstats.PlayerCareerStats(
+            player_id=player_id,
+            per_mode36="PerGame",
+        )
+        _sleep()
+        dfs = career.get_data_frames()
+        if dfs and not dfs[0].empty:
+            df = dfs[0]
+            season_rows = df[df["SEASON_ID"] == season]
+            if season_rows.empty:
+                season_rows = df.tail(1)
+            if not season_rows.empty:
+                row = season_rows.iloc[0]
+                per_game = {
+                    "pts":    _safe_float(row, "PTS"),
+                    "reb":    _safe_float(row, "REB"),
+                    "ast":    _safe_float(row, "AST"),
+                    "stl":    _safe_float(row, "STL"),
+                    "blk":    _safe_float(row, "BLK"),
+                    "pf":     _safe_float(row, "PF"),
+                    "tov":    _safe_float(row, "TOV"),
+                    "fga":    _safe_float(row, "FGA"),
+                    "fg3a":   _safe_float(row, "FG3A"),
+                    "fta":    _safe_float(row, "FTA"),
+                    "ft_pct": _safe_float(row, "FT_PCT"),
+                    "mp":     _safe_float(row, "MIN"),
+                    "g":      _safe_float(row, "GP"),
+                }
+                per_game = {k: v for k, v in per_game.items() if v is not None}
+    except Exception:
+        pass
+
+    # Fallback to LeagueDashPlayerStats for per-game stats
+    if not per_game:
+        try:
+            from nba_api.stats.endpoints import leaguedashplayerstats
+            _sleep()
+            dash = leaguedashplayerstats.LeagueDashPlayerStats(
+                season=season,
+                per_mode_simple="PerGame",
+            )
+            _sleep()
+            dfs = dash.get_data_frames()
+            if dfs and not dfs[0].empty:
+                df = dfs[0]
+                rows = df[df["PLAYER_ID"] == int(player_id)]
+                if not rows.empty:
+                    row = rows.iloc[0]
+                    per_game = {
+                        "pts":    _safe_float(row, "PTS"),
+                        "reb":    _safe_float(row, "REB"),
+                        "ast":    _safe_float(row, "AST"),
+                        "stl":    _safe_float(row, "STL"),
+                        "blk":    _safe_float(row, "BLK"),
+                        "pf":     _safe_float(row, "PF"),
+                        "tov":    _safe_float(row, "TOV"),
+                        "fga":    _safe_float(row, "FGA"),
+                        "fg3a":   _safe_float(row, "FG3A"),
+                        "fta":    _safe_float(row, "FTA"),
+                        "ft_pct": _safe_float(row, "FT_PCT"),
+                        "mp":     _safe_float(row, "MIN"),
+                        "g":      _safe_float(row, "GP"),
+                    }
+                    per_game = {k: v for k, v in per_game.items() if v is not None}
+        except Exception:
+            pass
+
+    # Try LeagueDashPlayerStats (Advanced) for advanced metrics
+    # nba_api returns decimals (e.g. 0.30 = 30% USG); multiply by 100 for percentage
+    try:
+        from nba_api.stats.endpoints import leaguedashplayerstats
+        _sleep()
+        adv_dash = leaguedashplayerstats.LeagueDashPlayerStats(
+            season=season,
+            per_mode_simple="PerGame",
+            measure_type_simple="Advanced",
+        )
+        _sleep()
+        dfs = adv_dash.get_data_frames()
+        if dfs and not dfs[0].empty:
+            df = dfs[0]
+            rows = df[df["PLAYER_ID"] == int(player_id)]
+            if not rows.empty:
+                row = rows.iloc[0]
+                usg     = _safe_float(row, "USG_PCT")
+                ast_pct = _safe_float(row, "AST_PCT")
+                orb_pct = _safe_float(row, "OREB_PCT")
+                ts_pct  = _safe_float(row, "TS_PCT")
+                advanced = {
+                    "usg_pct": round(usg * 100, 1)     if usg     is not None else None,
+                    "ast_pct": round(ast_pct * 100, 1) if ast_pct is not None else None,
+                    "orb_pct": round(orb_pct * 100, 1) if orb_pct is not None else None,
+                    "ts_pct":  ts_pct,
+                }
+                advanced = {k: v for k, v in advanced.items() if v is not None}
+    except Exception:
+        pass
+
+    # Fallback to PlayerEstimatedMetrics for advanced metrics
+    if not advanced:
+        try:
+            from nba_api.stats.endpoints import playerestimatedmetrics
+            _sleep()
+            est = playerestimatedmetrics.PlayerEstimatedMetrics(season=season)
+            _sleep()
+            dfs = est.get_data_frames()
+            if dfs and not dfs[0].empty:
+                df = dfs[0]
+                rows = df[df["PLAYER_ID"] == int(player_id)]
+                if not rows.empty:
+                    row = rows.iloc[0]
+                    usg     = _safe_float(row, "E_USG_PCT")
+                    ast_pct = _safe_float(row, "E_AST_PCT")
+                    orb_pct = _safe_float(row, "E_OREB_PCT")
+                    ts_pct  = _safe_float(row, "E_TRUE_SHOOTING_PCT")
+                    per     = _safe_float(row, "E_PER")
+                    advanced = {
+                        "usg_pct": round(usg * 100, 1)     if usg     is not None else None,
+                        "ast_pct": round(ast_pct * 100, 1) if ast_pct is not None else None,
+                        "orb_pct": round(orb_pct * 100, 1) if orb_pct is not None else None,
+                        "ts_pct":  ts_pct,
+                        "per":     per,
+                    }
+                    advanced = {k: v for k, v in advanced.items() if v is not None}
+        except Exception:
+            pass
+
+    return per_game, advanced
+
+
 def _safe_float(row, col):
     try:
         v = row[col]

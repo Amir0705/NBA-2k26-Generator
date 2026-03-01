@@ -480,13 +480,14 @@ def generate_tendencies_for_player(player_id, player_name, season="2024-25"):
     Orchestrates all data fetching and calculation.
     Always returns a valid result even if external APIs are down.
     """
-    from engine import nba_stats, scraper, pbp_parser, zone_distributor
+    from engine import nba_stats, pbp_parser, zone_distributor
     from engine import shotdetail_loader
 
     tracking   = {}
     shot_zones = {}
-    bbref_data = {}
     pbp_moves  = {}
+    per_game_data = {}
+    advanced_data = {}
     shotdetail_data = None
     player_info = {"name": player_name, "team": "", "position": "SG"}
 
@@ -521,9 +522,9 @@ def generate_tendencies_for_player(player_id, player_name, season="2024-25"):
     except Exception:
         pass
 
-    # Fetch BBRef stats
+    # Fetch per-game and advanced stats via nba_api
     try:
-        bbref_data = scraper.get_player_stats(player_name, player_id=player_id, season=season)
+        per_game_data, advanced_data = nba_stats.get_player_per_game_stats(player_id, season=season)
     except Exception:
         pass
 
@@ -542,7 +543,7 @@ def generate_tendencies_for_player(player_id, player_name, season="2024-25"):
         shotdetail_data = None
 
     # --- Merge shotdetail as primary source ---
-    shooting_splits = bbref_data.get("shooting_splits", {})
+    shooting_splits = {}
     action_counts   = {}
 
     if shotdetail_data:
@@ -576,11 +577,7 @@ def generate_tendencies_for_player(player_id, player_name, season="2024-25"):
             pbp_moves = merged_pbp
 
     # Build player_data dict
-    per_game_data = bbref_data.get("per_game", {})
-    advanced_data = bbref_data.get("advanced", {})
-
-    # If BBRef per_game is empty but shotdetail has data, estimate from shotdetail.
-    # This handles the common case where BBRef scraping fails due to rate-limiting.
+    # If nba_api per_game is empty but shotdetail has data, estimate from shotdetail.
     if shotdetail_data and not per_game_data:
         total_fga = shotdetail_data.get("total_fga", 0)
         total_fgm = shotdetail_data.get("total_fgm", 0)
@@ -661,7 +658,7 @@ def generate_tendencies_for_player(player_id, player_name, season="2024-25"):
     print(
         f"[DEBUG] {player_name}: "
         f"shotdetail={'OK' if shotdetail_data else 'NONE'}, "
-        f"bbref={'OK' if bbref_data.get('per_game') else 'FAILED'}, "
+        f"nba_api={'OK' if per_game_data else 'FAILED'}, "
         f"tracking={'OK' if any(v is not None for v in tracking.values()) else 'FAILED'}, "
         f"zones={'OK' if shot_zones else 'FAILED'}"
     )
