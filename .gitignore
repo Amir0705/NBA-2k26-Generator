@@ -6,6 +6,9 @@ __pycache__/
 # Runtime player stat caches (fetched on demand)
 data/cache_*.json
 
+# Downloaded shotdetail dataset (large CSV files, fetched on demand)
+data/shotdetail_*.csv
+
 # Export output files
 output/
 
