@@ -19,6 +19,14 @@ _ESTIMATED_FGA_PER_GAME = 16
 # Floor for estimated games_played to avoid extreme per-game rates for low-game samples
 _MIN_ESTIMATED_GAMES = 40
 
+# Empirical ratios used to estimate tracking stats from shotdetail FGA data
+# USG% ≈ fga_per_game * _USG_FGA_MULT + _USG_BASE: fits starter range well, capped at _USG_MAX
+_USG_FGA_MULT = 1.5
+_USG_BASE = 3
+_USG_MAX = 38
+# Touches per game scales roughly with shot volume; 3.5x accounts for dribbles, passes, off-ball
+_TOUCHES_PER_FGA = 3.5
+
 
 def _get_shotdetail_path(season_year=2024):
     """Return path to cached shotdetail CSV."""
@@ -227,6 +235,76 @@ def load_player_shotdetail(player_id, season_year=2024):
     return result
 
 
+def estimate_per_game_stats(shotdetail_data):
+    """
+    Estimate per-game stats from shotdetail data dict (returned by load_player_shotdetail).
+    Provides fallback values for tracking/BBRef stats when those endpoints fail.
+
+    Returns a dict with:
+      - fga_per_game, fg3a_per_game, pts_per_game
+      - drives_per_game (from driving action types)
+      - touches_estimate (fga_per_game * 3.5)
+      - usg_estimate (from fga_per_game formula)
+      - post_up_freq (post-up actions / total FGA)
+      - iso_freq (pull-up + step-back actions / total FGA)
+    Returns {} if data is insufficient.
+    """
+    if not shotdetail_data:
+        return {}
+
+    total_fga = shotdetail_data.get("total_fga", 0)
+    total_fgm = shotdetail_data.get("total_fgm", 0)
+    games_played = shotdetail_data.get("games_played", 0)
+    action_counts = shotdetail_data.get("action_counts", {})
+
+    if total_fga == 0:
+        return {}
+
+    games = games_played if games_played > 0 else max(total_fga / _ESTIMATED_FGA_PER_GAME, _MIN_ESTIMATED_GAMES)
+    fga_per_game = total_fga / games
+    splits = shotdetail_data.get("shooting_splits", {})
+    pct_3pt = splits.get("pct_fga_3pt", 0.25)
+    fg3a_per_game = fga_per_game * pct_3pt
+    fgm_per_game = total_fgm / games
+    pts_per_game = fgm_per_game * 2.1 + fg3a_per_game * 0.3
+
+    def _count(keywords):
+        total = 0
+        for action, cnt in action_counts.items():
+            action_lower = str(action).lower()
+            if any(kw.lower() in action_lower for kw in keywords):
+                total += cnt
+        return total
+
+    # Driving actions: layups/dunks that require a drive move
+    drive_count = _count(["driving layup", "driving dunk", "driving finger roll", "driving reverse layup"])
+    drives_per_game = drive_count / games
+
+    # Post-up actions: turnaround shots, hook shots, explicit post actions
+    post_count = _count(["turnaround", "post", "hook"])
+    post_up_freq = post_count / total_fga if total_fga > 0 else 0.0
+
+    # Isolation-style actions: pull-up shots and step-back shots (self-created)
+    iso_count = _count(["pullup", "step back"])
+    iso_freq = iso_count / total_fga if total_fga > 0 else 0.0
+
+    # Touches estimate: higher-volume shooters get more touches
+    touches_estimate = fga_per_game * _TOUCHES_PER_FGA
+    # USG% estimate without possession data
+    usg_estimate = min(fga_per_game * _USG_FGA_MULT + _USG_BASE, _USG_MAX)
+
+    return {
+        "fga_per_game":     round(fga_per_game, 1),
+        "fg3a_per_game":    round(fg3a_per_game, 1),
+        "pts_per_game":     round(pts_per_game, 1),
+        "drives_per_game":  round(drives_per_game, 2),
+        "touches_estimate": round(touches_estimate, 1),
+        "usg_estimate":     round(usg_estimate, 1),
+        "post_up_freq":     round(post_up_freq, 3),
+        "iso_freq":         round(iso_freq, 3),
+    }
+
+
 def extract_move_frequencies(action_counts, total_fga, games_played=None):
     """
     Convert ACTION_TYPE counts to per-game move frequency estimates.
@@ -245,6 +323,15 @@ def extract_move_frequencies(action_counts, total_fga, games_played=None):
                 total += count
         return round(total / games, 3)
 
+    def count_raw(keywords):
+        """Sum raw counts without per-game normalization."""
+        total = 0
+        for action, cnt in action_counts.items():
+            action_lower = str(action).lower()
+            if any(kw.lower() in action_lower for kw in keywords):
+                total += cnt
+        return total
+
     # Step-back: use pre-computed 2pt/3pt counts when available (keyed with underscore prefix),
     # otherwise fall back to keyword-based approximation.
     sb_2pt_count = action_counts.get("_stepback_2pt", None)
@@ -260,6 +347,8 @@ def extract_move_frequencies(action_counts, total_fga, games_played=None):
         stepback_mid  = max(round(stepback_all - stepback_jump, 3), 0)
         stepback_3    = stepback_jump
 
+    fga_per_game = total_fga / games
+
     return {
         "stepback_mid":      stepback_mid,
         "stepback_3":        stepback_3,
@@ -269,9 +358,10 @@ def extract_move_frequencies(action_counts, total_fga, games_played=None):
         "spin_layup":        freq(["reverse layup", "reverse dunk"]),
         "euro_step":         freq(["euro"]),
         "hop_step":          freq(["hop"]),
-        # "floater" covers true floaters; "floating" catches "Floating Jump Shot";
-        # "runner" captures running floaters/runners which are mechanically similar.
-        "floater":           freq(["floater", "floating", "runner"]),
+        # "floater" and "floating" cover true floaters and "Floating Jump Shot" actions.
+        # "runner" is intentionally excluded to avoid over-counting "Running Jump Shot"
+        # and "Running Layup Shot" which are not floaters in 2K's sense.
+        "floater":           freq(["floater", "floating"]),
         "step_through":      freq(["step through"]),
         "alley_oop_finish":  freq(["alley oop"]),
         "driving_layup":     freq(["driving layup", "driving finger roll", "cutting layup", "running layup"]),
@@ -284,4 +374,10 @@ def extract_move_frequencies(action_counts, total_fga, games_played=None):
         "tip":               freq(["tip"]),
         "dunk":              freq(["dunk"]),
         "layup":             freq(["layup"]),
+        # Derived estimates passed through for tracking stat fallback use
+        "drives_per_game":   round(freq(["driving layup", "driving dunk", "driving finger roll", "driving reverse layup"]), 3),
+        "touches_estimate":  round(fga_per_game * _TOUCHES_PER_FGA, 1),
+        "usg_estimate":      round(min(fga_per_game * _USG_FGA_MULT + _USG_BASE, _USG_MAX), 1),
+        "post_up_freq":      round(count_raw(["turnaround", "post", "hook"]) / total_fga, 3) if total_fga > 0 else 0.0,
+        "iso_freq":          round(count_raw(["pullup", "step back"]) / total_fga, 3) if total_fga > 0 else 0.0,
     }

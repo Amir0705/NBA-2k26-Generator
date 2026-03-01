@@ -66,6 +66,13 @@ _BLK_DIST    = [0.1, 0.3, 0.5, 0.8, 1.2, 2.0, 3.0]
 _PF_DIST     = [1.0, 1.5, 2.0, 2.5, 3.0, 3.5, 4.0]
 _AST_PCT_DIST = [5, 10, 15, 20, 25, 30, 35, 40]
 
+# Shot formula constants: FGA-based formula is primary for high-volume scorers.
+# 3.2× FGA maps typical starters (12-20 FGA) into the 35-65 Shot tendency range.
+# Threshold of 12 covers SF/PF/C position defaults; PG/SG defaults (14-16) always
+# trigger the FGA path, which is appropriate since guards are higher-volume by default.
+_SHOT_FGA_MULTIPLIER = 3.2
+_SHOT_FGA_THRESHOLD  = 12
+
 
 # ── Core calculator ────────────────────────────────────────────────────────
 
@@ -88,17 +95,17 @@ def calculate_tendencies(player_data):
     pts      = _safe(per_game.get("pts"),     15.0)
     reb      = _safe(per_game.get("reb"),      4.0)
     ast      = _safe(per_game.get("ast"),      3.0)
-    stl      = _safe(per_game.get("stl"),      0.8)
-    blk      = _safe(per_game.get("blk"),      0.5)
-    pf       = _safe(per_game.get("pf"),       2.5)
-    fga      = _safe(per_game.get("fga"),     12.0)
+    stl      = _safe(per_game.get("stl"),      {"PG": 1.2, "SG": 1.0, "SF": 0.8, "PF": 0.6, "C": 0.5}.get(pos, 0.8))
+    blk      = _safe(per_game.get("blk"),      {"PG": 0.2, "SG": 0.3, "SF": 0.5, "PF": 0.8, "C": 1.5}.get(pos, 0.5))
+    pf       = _safe(per_game.get("pf"),       {"PG": 2.0, "SG": 2.2, "SF": 2.5, "PF": 3.0, "C": 3.2}.get(pos, 2.5))
+    fga      = _safe(per_game.get("fga"),      {"PG": 16, "SG": 14, "SF": 12, "PF": 10, "C": 9}.get(pos, 12.0))
     fg3a     = _safe(per_game.get("fg3a"),     3.0)
     fta      = _safe(per_game.get("fta"),      3.0)
     ft_pct   = _safe(per_game.get("ft_pct"),   0.75)
     mp       = _safe(per_game.get("mp"),      25.0)
     g        = _safe(per_game.get("g"),        60.0)
 
-    usg_pct  = _safe(adv.get("usg_pct"),      20.0)
+    usg_pct  = _safe(adv.get("usg_pct"),      {"PG": 25, "SG": 22, "SF": 20, "PF": 18, "C": 18}.get(pos, 20.0))
     ast_pct  = _safe(adv.get("ast_pct"),      15.0)
     orb_pct  = _safe(adv.get("orb_pct"),       5.0)
     ts_pct   = _safe(adv.get("ts_pct"),        0.55)
@@ -152,14 +159,15 @@ def calculate_tendencies(player_data):
 
     # Position-based tracking defaults
     if touches is None:
-        if _is_guard(pos):   touches = 60.0
+        if pos == "PG":      touches = 65.0
+        elif pos == "SG":    touches = 50.0
         elif _is_wing(pos):  touches = 45.0
         else:                touches = 40.0
     if drives is None:
-        if pos == "PG":      drives = 8.0
-        elif pos == "SG":    drives = 5.0
-        elif pos == "SF":    drives = 4.0
-        else:                drives = 2.0
+        if pos == "PG":      drives = 10.0
+        elif pos == "SG":    drives = 6.0
+        elif pos == "SF":    drives = 5.0
+        else:                drives = 3.0
 
     # PBP moves
     stepback_mid    = _safe(pbp.get("stepback_mid"),    0)
@@ -177,7 +185,14 @@ def calculate_tendencies(player_data):
 
     # ──────────────────────────────────────────────────────────────
     # 1. SHOT (75)
-    T["Shot"] = _round5(_clamp(usg_pct * 0.75 * (75 / 33), 20, 75))
+    # When real FGA data is available (> threshold, meaning above the SF/PF/C position default),
+    # use it as the primary signal — FGA directly measures shot volume. The USG% formula
+    # is kept as fallback for low-volume players where FGA alone is insufficient.
+    if fga > _SHOT_FGA_THRESHOLD:
+        shot_val = _clamp(fga * _SHOT_FGA_MULTIPLIER, 25, 75)
+    else:
+        shot_val = _clamp(usg_pct * 0.75 * (75 / 33), 20, 75)
+    T["Shot"] = _round5(shot_val)
 
     # 2. TOUCH (65)
     T["Touch"] = percentile_to_tendency(touches, _TOUCH_DIST, 65, 20)
@@ -279,8 +294,10 @@ def calculate_tendencies(player_data):
     # 26. HOP STEP LAYUP (55)
     T["Hop Step Layup"] = _round5(_clamp(hop_step * 40, 5, 55))
 
-    # 27. FLOATER (55) — scale: 0.5/game = 10, 1.0/game = 20, 2.0/game = 40 (was * 50, too high)
-    floater_v = floater_pbp if floater_pbp > 0 else (0.3 if _is_guard(pos) else 0.1)
+    # 27. FLOATER (55) — scale: 0.5/game = 10, 1.0/game = 20, 2.0/game = 40
+    # Use only "floater"/"floating" keywords (not "runner") to avoid over-counting
+    # "Running Jump Shot" / "Running Layup Shot" which are not 2K floaters.
+    floater_v = floater_pbp if floater_pbp > 0 else (0.5 if _is_guard(pos) else 0.2)
     T["Floater"] = _round5(_clamp(floater_v * 20, 5, 55))
 
     # 28. STAND & DUNK (60)
@@ -460,7 +477,9 @@ def calculate_tendencies(player_data):
     T["On-Ball Steal"] = percentile_to_tendency(stl, _STL_DIST, 60, 10)
 
     # 83. BLOCKED SHOT (60)
-    T["Blocked Shot"] = percentile_to_tendency(blk, _BLK_DIST, 60, 5)
+    # Use a position-specific cap so guards (who rarely attempt blocks) stay low.
+    _blk_cap = {"PG": 15, "SG": 20, "SF": 40, "PF": 55, "C": 60}.get(pos, 60)
+    T["Blocked Shot"] = percentile_to_tendency(blk, _BLK_DIST, _blk_cap, 5)
 
     # 84. CONTEST SHOT (60)
     cont_v = contested if contested is not None else (_clamp(blk * 2 + stl, 0.5, 6))
@@ -578,38 +597,39 @@ def generate_tendencies_for_player(player_id, player_name, season="2024-25"):
 
     # Build player_data dict
     # If nba_api per_game is empty but shotdetail has data, estimate from shotdetail.
-    if shotdetail_data and not per_game_data:
-        total_fga = shotdetail_data.get("total_fga", 0)
-        total_fgm = shotdetail_data.get("total_fgm", 0)
-        games_played = shotdetail_data.get("games_played", 0)
-        # Use actual games from GAME_ID; fall back to FGA-based estimate with a floor of 40 games
-        estimated_games = games_played if games_played > 0 else max(total_fga / shotdetail_loader._ESTIMATED_FGA_PER_GAME, shotdetail_loader._MIN_ESTIMATED_GAMES)
+    if shotdetail_data:
+        sd_stats = shotdetail_loader.estimate_per_game_stats(shotdetail_data)
 
-        if estimated_games > 0:
-            fga_per_game = total_fga / estimated_games
-            fgm_per_game = total_fgm / estimated_games
-            splits = shotdetail_data.get("shooting_splits", {})
-            pct_3pt = splits.get("pct_fga_3pt", 0.25)
-            fg3a_per_game = fga_per_game * pct_3pt
+        if sd_stats:
+            # Fill missing per_game stats from shotdetail estimates
+            if not per_game_data:
+                per_game_data = {
+                    "fga":  sd_stats["fga_per_game"],
+                    "fg3a": sd_stats["fg3a_per_game"],
+                    "pts":  sd_stats["pts_per_game"],
+                    "g":    round(shotdetail_data.get("games_played", 60)),
+                }
 
-            per_game_data = {
-                "fga": round(fga_per_game, 1),
-                "fg3a": round(fg3a_per_game, 1),
-                # pts ≈ 2pt FGM * ~2.1 (accounts for avg points per 2pt attempt inc. FTs)
-                #       + 3pt FGA * 0.3 (bonus points from made 3s vs expected 2s)
-                "pts": round(fgm_per_game * 2.1 + fg3a_per_game * 0.3, 1),
-                "g": round(estimated_games),
-            }
+            # Fill missing USG estimate (advanced) from shotdetail
+            if not advanced_data.get("usg_pct"):
+                advanced_data["usg_pct"] = sd_stats["usg_estimate"]
 
-            # Rough USG% estimate without possession data:
-            #   USG ≈ FGA/game * 1.4 + 5  (empirically fits starters; 1.4 scales for FTA/TOV)
-            #   Clamped to [15, 35] — below-15 is bench player, above-35 is unrealistic from FGA alone
-            estimated_usg = min(max(fga_per_game * 1.4 + 5, 15), 35)
-            advanced_data = {"usg_pct": round(estimated_usg, 1)}
+            # Fill missing tracking stats from shotdetail estimates
+            if tracking.get("drives_per_game") is None and sd_stats.get("drives_per_game"):
+                tracking["drives_per_game"] = sd_stats["drives_per_game"]
+            if tracking.get("touches_per_game") is None and sd_stats.get("touches_estimate"):
+                tracking["touches_per_game"] = sd_stats["touches_estimate"]
+            if tracking.get("post_up_freq") is None and sd_stats.get("post_up_freq"):
+                tracking["post_up_freq"] = sd_stats["post_up_freq"]
+            if tracking.get("iso_freq") is None and sd_stats.get("iso_freq"):
+                tracking["iso_freq"] = sd_stats["iso_freq"]
 
             print(
                 f"[shotdetail] Estimated per_game from shotdetail: "
-                f"fga={fga_per_game:.1f}, usg={estimated_usg:.1f}, games={estimated_games:.0f}"
+                f"fga={sd_stats.get('fga_per_game', 0):.1f}, "
+                f"usg={sd_stats.get('usg_estimate', 0):.1f}, "
+                f"drives={sd_stats.get('drives_per_game', 0):.1f}, "
+                f"touches={sd_stats.get('touches_estimate', 0):.1f}"
             )
 
     player_data = {
