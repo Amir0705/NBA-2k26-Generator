@@ -269,11 +269,12 @@ def extract_move_frequencies(action_counts, total_fga, games_played=None):
         "spin_layup":        freq(["reverse layup", "reverse dunk"]),
         "euro_step":         freq(["euro"]),
         "hop_step":          freq(["hop"]),
-        # "Floating Jump Shot" is too broad — only count true floaters (keyword "floater").
-        "floater":           freq(["floater"]),
+        # "floater" covers true floaters; "floating" catches "Floating Jump Shot";
+        # "runner" captures running floaters/runners which are mechanically similar.
+        "floater":           freq(["floater", "floating", "runner"]),
         "step_through":      freq(["step through"]),
         "alley_oop_finish":  freq(["alley oop"]),
-        "driving_layup":     freq(["driving layup", "driving finger roll"]),
+        "driving_layup":     freq(["driving layup", "driving finger roll", "cutting layup", "running layup"]),
         "driving_dunk":      freq(["driving dunk"]),
         "pullup_mid":        freq(["pullup"]),
         "pullup_3":          freq(["pullup jump shot"]),

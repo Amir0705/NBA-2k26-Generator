@@ -2,6 +2,3 @@ flask
 nba_api
 pandas
 openpyxl
-beautifulsoup4
-requests
-lxml
