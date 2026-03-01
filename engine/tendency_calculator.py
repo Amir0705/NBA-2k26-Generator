@@ -481,11 +481,13 @@ def generate_tendencies_for_player(player_id, player_name, season="2024-25"):
     Always returns a valid result even if external APIs are down.
     """
     from engine import nba_stats, scraper, pbp_parser, zone_distributor
+    from engine import shotdetail_loader
 
     tracking   = {}
     shot_zones = {}
     bbref_data = {}
     pbp_moves  = {}
+    shotdetail_data = None
     player_info = {"name": player_name, "team": "", "position": "SG"}
 
     # Fetch player info
@@ -531,6 +533,39 @@ def generate_tendencies_for_player(player_id, player_name, season="2024-25"):
     except Exception:
         pass
 
+    # Fetch shotdetail data (primary source — overrides bbref/nba_api when available)
+    try:
+        season_year = int(season.split("-")[0])
+        shotdetail_data = shotdetail_loader.load_player_shotdetail(player_id, season_year=season_year)
+    except Exception as e:
+        print(f"[shotdetail] WARNING: Could not load shotdetail data: {e}")
+        shotdetail_data = None
+
+    # --- Merge shotdetail as primary source ---
+    shooting_splits = bbref_data.get("shooting_splits", {})
+    action_counts   = {}
+
+    if shotdetail_data:
+        # Override shooting splits with shotdetail data
+        if shotdetail_data.get("shooting_splits"):
+            shooting_splits = shotdetail_data["shooting_splits"]
+
+        # Override shot zones with shotdetail data
+        if shotdetail_data.get("shot_zones"):
+            shot_zones = shotdetail_data["shot_zones"]
+
+        # Build pbp_moves from action_counts using extract_move_frequencies
+        action_counts = shotdetail_data.get("action_counts", {})
+        if action_counts:
+            total_fga = shotdetail_data.get("total_fga", 1)
+            move_freqs = shotdetail_loader.extract_move_frequencies(action_counts, total_fga)
+            # Override pbp_moves with computed frequencies (only if non-zero)
+            merged_pbp = dict(pbp_moves)
+            for key, val in move_freqs.items():
+                if val > 0:
+                    merged_pbp[key] = val
+            pbp_moves = merged_pbp
+
     # Build player_data dict
     player_data = {
         "player_id": player_id,
@@ -539,7 +574,7 @@ def generate_tendencies_for_player(player_id, player_name, season="2024-25"):
         "team":      player_info.get("team", ""),
         "per_game":  bbref_data.get("per_game",        {}),
         "advanced":  bbref_data.get("advanced",        {}),
-        "shooting_splits": bbref_data.get("shooting_splits", {}),
+        "shooting_splits": shooting_splits,
         "tracking":  tracking,
         "shot_zones": shot_zones,
         "pbp_moves": pbp_moves,
@@ -553,6 +588,9 @@ def generate_tendencies_for_player(player_id, player_name, season="2024-25"):
         parent_shot=tendencies.get("Shot Close") if tendencies.get("Shot Close") is not None else tendencies.get("Shot Under"),
         parent_mid=tendencies.get("Shot Mid"),
         parent_three=tendencies.get("Shot Three"),
+        zone_area_close=shotdetail_data.get("zone_area_close") if shotdetail_data else None,
+        zone_area_mid=shotdetail_data.get("zone_area_mid") if shotdetail_data else None,
+        zone_area_three=shotdetail_data.get("zone_area_three") if shotdetail_data else None,
     )
     name_map = {
         "shot_close_left":         "Shot Close Left",
@@ -574,6 +612,7 @@ def generate_tendencies_for_player(player_id, player_name, season="2024-25"):
 
     print(
         f"[DEBUG] {player_name}: "
+        f"shotdetail={'OK' if shotdetail_data else 'NONE'}, "
         f"bbref={'OK' if bbref_data.get('per_game') else 'FAILED'}, "
         f"tracking={'OK' if any(v is not None for v in tracking.values()) else 'FAILED'}, "
         f"zones={'OK' if shot_zones else 'FAILED'}"
