@@ -15,10 +15,10 @@ const NBA_TEAMS = [
 ];
 
 const CATEGORIES = {
-  'Shooting':            ['Shot','Touch','Shot Close','Shot Under','Shot Mid','Spot-Up Shot Mid','Off-Screen Mid','Shot Three','Spot-Up Three','Off-Screen Three','Contested Jumper Mid','Contested Jumper Three'],
+  'Shooting':            ['Shot','Touch','Shot Close','Shot Under','Shot Close Left','Shot Close Middle','Shot Close Right','Shot Mid','Spot-Up Shot Mid','Off-Screen Mid','Shot Mid Left','Shot Mid Left-Center','Shot Mid Center','Shot Mid Right-Center','Shot Mid Right','Shot Three','Spot-Up Three','Off-Screen Three','Shot Three Left','Shot Three Left-Center','Shot Three Center','Shot Three Right-Center','Shot Three Right','Contested Jumper Mid','Contested Jumper Three'],
   'Pull-Up & Step-Back': ['Step-Back Jumper Mid','Step-Back Jumper Three','Spin Jumper','Transition Pull-Up Three','Dribble Pull-Up Mid','Dribble Pull-Up Three'],
   'Driving':             ['Drive','Spot-Up Drive','Off-Screen Drive'],
-  'Finishing':           ['Use Glass','Step Through Shot','Spin Layup','Eurostep Layup','Hop Step Layup','Floater'],
+  'Finishing':           ['Use Glass','Driving Layup','Step Through Shot','Spin Layup','Eurostep Layup','Hop Step Layup','Floater'],
   'Dunks':               ['Stand & Dunk','Drive & Dunk','Flashy Dunk','Alley-Oop','Putback','Crash'],
   'Direction & Triple Threat': ['Drive Right','Triple Threat Pump Fake','Triple Threat Jab Step','Triple Threat Idle','Triple Threat Shoot'],
   'Dribble Setup':       ['Set Up with Size Up','Set Up with Hesitation','No Set Up Dribble','Drive and Crossover','Drive and Double Crossover','Drive and Spin','Drive and Half Spin','Drive and Step Back','Drive and Behind the Back','Drive and Dribble Hesitation','Drive and In and Out','No Drive & Dribble Move'],
@@ -30,12 +30,16 @@ const CATEGORIES = {
 
 // Hard caps (mirrors engine/constants.py)
 const HARD_CAPS = {
-  'Shot':75,'Touch':65,'Shot Close':60,'Shot Under':60,'Shot Mid':55,
-  'Spot-Up Shot Mid':45,'Off-Screen Mid':40,'Shot Three':60,'Spot-Up Three':60,
-  'Off-Screen Three':55,'Contested Jumper Mid':45,'Contested Jumper Three':40,
+  'Shot':75,'Touch':65,'Shot Close':60,'Shot Under':60,
+  'Shot Close Left':50,'Shot Close Middle':50,'Shot Close Right':50,
+  'Shot Mid':55,'Spot-Up Shot Mid':45,'Off-Screen Mid':40,
+  'Shot Mid Left':45,'Shot Mid Left-Center':45,'Shot Mid Center':45,'Shot Mid Right-Center':45,'Shot Mid Right':45,
+  'Shot Three':60,'Spot-Up Three':60,'Off-Screen Three':55,
+  'Shot Three Left':50,'Shot Three Left-Center':50,'Shot Three Center':50,'Shot Three Right-Center':50,'Shot Three Right':50,
+  'Contested Jumper Mid':45,'Contested Jumper Three':40,
   'Step-Back Jumper Mid':40,'Step-Back Jumper Three':35,'Spin Jumper':45,
   'Transition Pull-Up Three':45,'Dribble Pull-Up Mid':50,'Dribble Pull-Up Three':40,
-  'Drive':60,'Spot-Up Drive':55,'Off-Screen Drive':50,'Use Glass':55,
+  'Drive':60,'Spot-Up Drive':55,'Off-Screen Drive':50,'Use Glass':55,'Driving Layup':60,
   'Step Through Shot':45,'Spin Layup':55,'Eurostep Layup':55,'Hop Step Layup':55,
   'Floater':55,'Stand & Dunk':60,'Drive & Dunk':60,'Flashy Dunk':55,'Alley-Oop':55,
   'Putback':55,'Crash':55,'Drive Right':80,'Triple Threat Pump Fake':60,
