@@ -178,6 +178,114 @@ def api_bulk_generate():
         return jsonify({"error": str(e)}), 500
 
 
+@app.route("/api/debug-raw", methods=["POST", "OPTIONS"])
+def api_debug_raw():
+    if request.method == "OPTIONS":
+        return jsonify({}), 200
+    try:
+        body = request.get_json(force=True) or {}
+        player_id = int(body.get("player_id", 0))
+        player_name = body.get("player_name", "")
+        season = body.get("season", "2024-25")
+
+        from engine import nba_stats, shotdetail_loader
+
+        result = {
+            "player_id": player_id,
+            "player_name": player_name,
+            "position": "",
+            "team": "",
+            "data_sources": {},
+        }
+
+        # 1. Player info
+        try:
+            info = nba_stats.get_player_info(player_id)
+            result["position"] = info.get("position", "")
+            result["team"] = info.get("team", "")
+            result["player_name"] = info.get("name") if info.get("name") is not None else player_name
+        except Exception as e:
+            result["data_sources"]["player_info"] = {"status": "FAILED", "error": str(e), "data": {}}
+
+        # 2. Per-game and advanced stats
+        try:
+            per_game, advanced = nba_stats.get_player_per_game_stats(player_id, season=season)
+            result["data_sources"]["nba_api_per_game"] = {
+                "status": "OK" if per_game else "EMPTY",
+                "data": per_game or {},
+            }
+            result["data_sources"]["nba_api_advanced"] = {
+                "status": "OK" if advanced else "EMPTY",
+                "data": advanced or {},
+            }
+        except Exception as e:
+            result["data_sources"]["nba_api_per_game"] = {"status": "FAILED", "error": str(e), "data": {}}
+            result["data_sources"]["nba_api_advanced"] = {"status": "FAILED", "error": str(e), "data": {}}
+
+        # 3. Tracking stats
+        try:
+            tracking = nba_stats.get_tracking_stats(player_id, season=season)
+            has_data = any(v is not None for v in tracking.values())
+            result["data_sources"]["nba_api_tracking"] = {
+                "status": "OK" if has_data else "ALL_NULL",
+                "data": tracking,
+            }
+        except Exception as e:
+            result["data_sources"]["nba_api_tracking"] = {"status": "FAILED", "error": str(e), "data": {}}
+
+        # 4. Shot zones
+        try:
+            zones = nba_stats.get_shot_zones(player_id, season=season)
+            result["data_sources"]["nba_api_shot_zones"] = {
+                "status": "OK" if zones else "EMPTY",
+                "data": zones or {},
+            }
+        except Exception as e:
+            result["data_sources"]["nba_api_shot_zones"] = {"status": "FAILED", "error": str(e), "data": {}}
+
+        # 5. Shotdetail CSV
+        try:
+            season_year = int(season.split("-")[0])
+            sd = shotdetail_loader.load_player_shotdetail(player_id, season_year=season_year)
+            if sd:
+                sd_stats = shotdetail_loader.estimate_per_game_stats(sd)
+                action_counts = sd.get("action_counts", {})
+                top_actions = sorted(action_counts.items(), key=lambda x: x[1], reverse=True)[:20]
+
+                sd_data = {
+                    "total_fga": sd.get("total_fga", 0),
+                    "total_fgm": sd.get("total_fgm", 0),
+                    "games_played": sd.get("games_played", 0),
+                    "shooting_splits": sd.get("shooting_splits", {}),
+                    "zone_area_mid": sd.get("zone_area_mid", {}),
+                    "zone_area_three": sd.get("zone_area_three", {}),
+                    "zone_area_close": sd.get("zone_area_close", {}),
+                    "top_action_types": top_actions,
+                    "estimated_stats": sd_stats or {},
+                }
+
+                if action_counts:
+                    merged_counts = dict(action_counts)
+                    merged_counts["_stepback_2pt"] = sd.get("stepback_2pt_count", 0)
+                    merged_counts["_stepback_3pt"] = sd.get("stepback_3pt_count", 0)
+                    move_freqs = shotdetail_loader.extract_move_frequencies(
+                        merged_counts,
+                        sd.get("total_fga", 1),
+                        games_played=sd.get("games_played"),
+                    )
+                    sd_data["move_frequencies"] = move_freqs
+
+                result["data_sources"]["shotdetail_csv"] = {"status": "OK", "data": sd_data}
+            else:
+                result["data_sources"]["shotdetail_csv"] = {"status": "NO_DATA", "data": {}}
+        except Exception as e:
+            result["data_sources"]["shotdetail_csv"] = {"status": "FAILED", "error": str(e), "data": {}}
+
+        return jsonify(result)
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
 if __name__ == "__main__":
     debug_mode = os.environ.get("FLASK_DEBUG", "0") == "1"
     app.run(host="0.0.0.0", port=5000, debug=debug_mode)

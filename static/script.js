@@ -2,6 +2,7 @@
 const API = {
   search:        '/api/search',
   generate:      '/api/generate',
+  debugRaw:      '/api/debug-raw',
   refreshRoster: '/api/refresh-roster',
   exportCsv:     '/api/export/csv',
   exportExcel:   '/api/export/excel',
@@ -68,6 +69,7 @@ let searchTimer    = null;
 const searchInput     = document.getElementById('searchInput');
 const acList          = document.getElementById('autocompleteList');
 const generateBtn     = document.getElementById('generateBtn');
+const debugBtn        = document.getElementById('debugBtn');
 const refreshBtn      = document.getElementById('refreshBtn');
 const selectedEl      = document.getElementById('selectedPlayer');
 const selName         = document.getElementById('selectedName');
@@ -82,6 +84,9 @@ const resultPos       = document.getElementById('resultPos');
 const tendencyTables  = document.getElementById('tendencyTables');
 const exportCsvBtn    = document.getElementById('exportCsvBtn');
 const exportExcelBtn  = document.getElementById('exportExcelBtn');
+const debugSection    = document.getElementById('debugSection');
+const debugContent    = document.getElementById('debugContent');
+const debugCloseBtn   = document.getElementById('debugCloseBtn');
 const teamSelect      = document.getElementById('teamSelect');
 const bulkBtn         = document.getElementById('bulkBtn');
 const bulkProgress    = document.getElementById('bulkProgress');
@@ -147,6 +152,7 @@ function selectPlayer(p) {
   selPos.textContent  = p.position || '';
   selectedEl.classList.remove('hidden');
   generateBtn.disabled = false;
+  debugBtn.disabled = false;
 }
 
 /* ── Generate ────────────────────────────────────────────────────────── */
@@ -306,6 +312,121 @@ refreshBtn.addEventListener('click', async () => {
     refreshBtn.textContent = '↻ Roster';
   }
 });
+
+/* ── Debug raw data ──────────────────────────────────────────────────── */
+debugBtn.addEventListener('click', async () => {
+  if (!selectedPlayer) return;
+
+  showLoading('Fetching raw data…');
+  try {
+    const res = await fetch(API.debugRaw, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        player_id: selectedPlayer.player_id,
+        player_name: selectedPlayer.name,
+        season: '2024-25',
+      }),
+    });
+    const data = await res.json();
+    if (data.error) throw new Error(data.error);
+    renderDebugPanel(data);
+    debugSection.classList.remove('hidden');
+    debugSection.scrollIntoView({ behavior: 'smooth' });
+  } catch (e) {
+    alert('Debug failed: ' + e.message);
+  } finally {
+    hideLoading();
+  }
+});
+
+debugCloseBtn.addEventListener('click', () => {
+  debugSection.classList.add('hidden');
+});
+
+function renderDebugPanel(data) {
+  let html = `<div class="debug-header">
+    <strong>${esc(data.player_name)}</strong> (ID: ${esc(String(data.player_id))}) —
+    <span class="badge badge-pos">${esc(data.position)}</span>
+    <span class="badge badge-team">${esc(data.team)}</span>
+  </div>`;
+
+  const sources = data.data_sources || {};
+  for (const [sourceName, sourceData] of Object.entries(sources)) {
+    const status = sourceData.status || 'UNKNOWN';
+    const statusClass = status === 'OK' ? 'debug-ok' :
+                        status === 'FAILED' ? 'debug-fail' : 'debug-warn';
+    const statusEmoji = status === 'OK' ? '✅' :
+                        status === 'FAILED' ? '❌' : '⚠️';
+
+    html += `<details class="debug-source ${statusClass}">
+      <summary>
+        <span class="debug-status">${statusEmoji} ${esc(status)}</span>
+        <strong>${esc(formatSourceName(sourceName))}</strong>
+        ${sourceData.error ? `<span class="debug-error"> — ${esc(sourceData.error)}</span>` : ''}
+      </summary>
+      <div class="debug-data">`;
+
+    if (sourceData.data && Object.keys(sourceData.data).length > 0) {
+      html += renderDataObject(sourceData.data);
+    } else {
+      html += '<p class="debug-empty">No data returned</p>';
+    }
+
+    html += `</div></details>`;
+  }
+
+  debugContent.innerHTML = html;
+}
+
+function formatSourceName(name) {
+  return name.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+}
+
+function fmtNum(v) {
+  return v % 1 === 0 ? v : v.toFixed(4);
+}
+
+function renderDataObject(obj) {
+  let html = '<table class="debug-table"><tbody>';
+
+  for (const [key, value] of Object.entries(obj)) {
+    let displayValue;
+
+    if (Array.isArray(value)) {
+      displayValue = '<table class="debug-subtable"><tbody>';
+      for (const item of value.slice(0, 20)) {
+        if (Array.isArray(item)) {
+          displayValue += `<tr><td>${esc(String(item[0]))}</td><td class="debug-num">${esc(String(item[1]))}</td></tr>`;
+        } else {
+          displayValue += `<tr><td colspan="2">${esc(String(item))}</td></tr>`;
+        }
+      }
+      displayValue += '</tbody></table>';
+    } else if (typeof value === 'object' && value !== null) {
+      displayValue = '<table class="debug-subtable"><tbody>';
+      for (const [k, v] of Object.entries(value)) {
+        const formatted = typeof v === 'number' ? fmtNum(v) : esc(String(v));
+        displayValue += `<tr><td>${esc(k)}</td><td class="debug-num">${formatted}</td></tr>`;
+      }
+      displayValue += '</tbody></table>';
+    } else if (value === null) {
+      displayValue = '<span class="debug-null">null ⚠️</span>';
+    } else if (typeof value === 'number') {
+      displayValue = fmtNum(value);
+    } else {
+      displayValue = esc(String(value));
+    }
+
+    html += `<tr>
+      <td class="debug-key">${esc(key)}</td>
+      <td>${displayValue}</td>
+    </tr>`;
+  }
+
+  html += '</tbody></table>';
+  return html;
+}
 
 /* ── Bulk generate ───────────────────────────────────────────────────── */
 bulkBtn.addEventListener('click', async () => {
