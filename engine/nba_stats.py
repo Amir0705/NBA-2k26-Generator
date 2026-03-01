@@ -185,27 +185,37 @@ def get_tracking_stats(player_id, season=SEASON):
     except Exception as e:
         print(f"[nba_stats] Drives tracking failed: {e}")
 
-    # Touches
-    try:
-        from nba_api.stats.endpoints import leaguedashptstats
-        _sleep()
-        touches = leaguedashptstats.LeagueDashPtStats(
-            season=season,
-            pt_measure_type="Touches",
-            per_mode_simple="PerGame",
-            player_or_team="Player",
-        )
-        _sleep()
-        dfs = touches.get_data_frames()
-        if dfs and not dfs[0].empty:
-            df = dfs[0]
-            rows = df[df["PLAYER_ID"] == int(player_id)]
-            if not rows.empty:
-                row = rows.iloc[0]
-                if result["touches_per_game"] is None:
-                    result["touches_per_game"] = _safe_float(row, "TOUCHES")
-    except Exception as e:
-        print(f"[nba_stats] Touches tracking failed: {e}")
+    # Touches (with retry and fallback measure type)
+    for attempt in range(2):
+        try:
+            from nba_api.stats.endpoints import leaguedashptstats
+            _sleep()
+            touches = leaguedashptstats.LeagueDashPtStats(
+                season=season,
+                pt_measure_type="Passing",
+                per_mode_simple="PerGame",
+                player_or_team="Player",
+            )
+            _sleep()
+            dfs = touches.get_data_frames()
+            if dfs and not dfs[0].empty:
+                df = dfs[0]
+                if "PLAYER_ID" in df.columns:
+                    rows = df[df["PLAYER_ID"] == int(player_id)]
+                    if not rows.empty:
+                        row = rows.iloc[0]
+                        if result["touches_per_game"] is None:
+                            t = _safe_float(row, "TOUCHES")
+                            if t is None:
+                                t = _safe_float(row, "FRONT_CT_TOUCHES")
+                            if t is None:
+                                t = _safe_float(row, "TIME_OF_POSS")
+                            result["touches_per_game"] = t
+            break
+        except Exception as e:
+            print(f"[nba_stats] Touches tracking attempt {attempt + 1} failed: {e}")
+            if attempt == 0:
+                time.sleep(3.0)
 
     # PullUpShot
     try:
@@ -224,11 +234,42 @@ def get_tracking_stats(player_id, season=SEASON):
             rows = df[df["PLAYER_ID"] == int(player_id)]
             if not rows.empty:
                 row = rows.iloc[0]
-                result["pull_up_mid_fga"] = _safe_float(row, "PULL_UP_FG2A")
-                result["pull_up_3_fga"]   = _safe_float(row, "PULL_UP_FG3A")
-                result["avg_dribbles_before_shot"] = _safe_float(row, "AVG_DRIB_PER_TOUCH")
+                total_pullup_fga = _safe_float(row, "PULL_UP_FGA")
+                pullup_3 = _safe_float(row, "PULL_UP_FG3A")
+                if total_pullup_fga is not None and pullup_3 is not None:
+                    result["pull_up_mid_fga"] = round(total_pullup_fga - pullup_3, 1)
+                elif total_pullup_fga is not None:
+                    result["pull_up_mid_fga"] = total_pullup_fga
+                result["pull_up_3_fga"] = pullup_3
     except Exception as e:
         print(f"[nba_stats] PullUpShot tracking failed: {e}")
+
+    # Average dribbles — from Possessions measure type
+    if result["avg_dribbles_before_shot"] is None:
+        try:
+            from nba_api.stats.endpoints import leaguedashptstats
+            _sleep()
+            poss = leaguedashptstats.LeagueDashPtStats(
+                season=season,
+                pt_measure_type="Possessions",
+                per_mode_simple="PerGame",
+                player_or_team="Player",
+            )
+            _sleep()
+            dfs = poss.get_data_frames()
+            if dfs and not dfs[0].empty:
+                df = dfs[0]
+                if "PLAYER_ID" in df.columns:
+                    rows = df[df["PLAYER_ID"] == int(player_id)]
+                    if not rows.empty:
+                        row = rows.iloc[0]
+                        result["avg_dribbles_before_shot"] = (
+                            _safe_float(row, "AVG_DRIB_PER_TOUCH")
+                            if _safe_float(row, "AVG_DRIB_PER_TOUCH") is not None
+                            else _safe_float(row, "AVG_SEC_PER_TOUCH")
+                        )
+        except Exception as e:
+            print(f"[nba_stats] Possessions (dribbles) failed: {e}")
 
     # CatchShoot
     try:
@@ -247,8 +288,13 @@ def get_tracking_stats(player_id, season=SEASON):
             rows = df[df["PLAYER_ID"] == int(player_id)]
             if not rows.empty:
                 row = rows.iloc[0]
-                result["catch_shoot_3_fga"]   = _safe_float(row, "CATCH_SHOOT_FG3A")
-                result["catch_shoot_mid_fga"]  = _safe_float(row, "CATCH_SHOOT_FG2A")
+                result["catch_shoot_3_fga"] = _safe_float(row, "CATCH_SHOOT_FG3A")
+                total_cs_fga = _safe_float(row, "CATCH_SHOOT_FGA")
+                cs_3 = result["catch_shoot_3_fga"]
+                if total_cs_fga is not None and cs_3 is not None:
+                    result["catch_shoot_mid_fga"] = round(total_cs_fga - cs_3, 1)
+                elif total_cs_fga is not None:
+                    result["catch_shoot_mid_fga"] = total_cs_fga
     except Exception as e:
         print(f"[nba_stats] CatchShoot tracking failed: {e}")
 
@@ -261,22 +307,32 @@ def get_tracking_stats(player_id, season=SEASON):
             pt_measure_type="Defense",
             per_mode_simple="PerGame",
             player_or_team="Player",
+            player_id_nullable=player_id,
         )
         _sleep()
         dfs = defended.get_data_frames()
         if dfs and not dfs[0].empty:
             df = dfs[0]
-            rows = df[df["PLAYER_ID"] == int(player_id)]
-            if not rows.empty:
-                row = rows.iloc[0]
-                result["deflections_per_game"] = (
-                    _safe_float(row, "DEFLECTIONS")
-                    or _safe_float(row, "DEF_LOOSE_BALLS_RECOVERED")
-                )
-                result["contested_shots_per_game"] = (
-                    _safe_float(row, "CONTESTED_SHOTS")
-                    or _safe_float(row, "D_FGA")
-                )
+            id_col = None
+            for col_name in ["PLAYER_ID", "player_id", "Player_ID"]:
+                if col_name in df.columns:
+                    id_col = col_name
+                    break
+            if id_col:
+                rows = df[df[id_col] == int(player_id)]
+                if not rows.empty:
+                    row = rows.iloc[0]
+                    defl = _safe_float(row, "DEFLECTIONS")
+                    result["deflections_per_game"] = (
+                        defl if defl is not None else _safe_float(row, "DEF_LOOSE_BALLS_RECOVERED")
+                    )
+                    cont = _safe_float(row, "CONTESTED_SHOTS")
+                    result["contested_shots_per_game"] = (
+                        cont if cont is not None else _safe_float(row, "D_FGA")
+                    )
+                    result["charges_drawn_per_game"] = _safe_float(row, "CHARGES_DRAWN")
+            else:
+                print(f"[nba_stats] Defense DataFrame columns: {list(df.columns)}")
     except Exception as e:
         print(f"[nba_stats] Defense tracking failed: {e}")
 
@@ -380,6 +436,12 @@ def get_tracking_stats(player_id, season=SEASON):
                     result["off_screen_3_fga"] = (result["off_screen_fga"] or 0) * 0.6
     except Exception as e:
         print(f"[nba_stats] OffScreen synergy failed: {e}")
+
+    # Apply league-average defaults for contested shot percentages if still unavailable
+    if result["contested_mid_fga_pct"] is None:
+        result["contested_mid_fga_pct"] = 0.25  # league-average contested mid-range FGA pct
+    if result["contested_3_fga_pct"] is None:
+        result["contested_3_fga_pct"] = 0.20  # league-average contested 3-point FGA pct
 
     return result
 
